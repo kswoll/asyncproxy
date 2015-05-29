@@ -20,25 +20,25 @@ namespace AsyncProxy
             return task;
         }
 
-        public async Task<T> Invoke<T>(AsyncInvocationT<T> invocation)
+        public async Task<T> AsyncInvokeT<T>(AsyncInvocationT<T> invocation)
         {
             var task = GetTask(invocation);
             return (T)await task;
         }
 
-        public async Task Invoke(VoidAsyncInvocation invocation)
+        public async Task VoidAsyncInvoke(VoidAsyncInvocation invocation)
         {
             var task = GetTask(invocation);
             await task;
         }
 
-        public T Invoke<T>(InvocationT<T> invocation)
+        public T InvokeT<T>(InvocationT<T> invocation)
         {
             var task = GetTask(invocation);
             return (T)task.Result;
         }
 
-        public void Invoke(VoidInvocation invocation)
+        public void VoidInvoke(VoidInvocation invocation)
         {
             var task = GetTask(invocation);
             task.Wait();

@@ -45,6 +45,7 @@
     <Compile Include="HandWritten.cs" />
     <Compile Include="HandWrittenProxy.cs" />
     <Compile Include="HandWrittenProxyTests.cs" />
+    <Compile Include="HandWrittenWithDynamicProxyTests.cs" />
     <Compile Include="IHandWritten.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>

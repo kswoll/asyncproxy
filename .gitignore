@@ -3,3 +3,4 @@ AsyncProxy/obj/
 packages/
 AsyncProxy.Tests/obj/
 AsyncProxy.Tests/bin/
+*.suo
