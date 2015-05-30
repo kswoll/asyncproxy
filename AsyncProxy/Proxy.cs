@@ -50,9 +50,30 @@ namespace AsyncProxy
         /// <returns>The new instance of the proxy that is an instance of T</returns>
         public static T CreateProxy<T>(T target, Func<Invocation, Task<object>> invocationHandler)
         {
-            if (!typeof(T).IsInterface)
-                throw new Exception("Can only create proxies around interfaces.");
             return Proxy<T>.CreateProxy(target, invocationHandler);
+        }
+
+        /// <summary>
+        /// Creates a proxy for a given type.  This method supports two discrete usage scenarios.<p/>
+        /// If T is an interface, the target should be an implementation of that interface. In 
+        /// this scenario, T should be <i>explicitly</i> specified unless the type of <i>target</i>
+        /// at the calling site is of that interface.  In other words, if the calling site has the
+        /// <i>target</i> declared as the concrete implementation, the proxy will be generated
+        /// for the implementation, rather than for the interface.
+        /// 
+        /// If T is a class, the target should be an instance of that class, and a subclassing 
+        /// proxy will be created for it.  However, because target is specified in this case, 
+        /// the base class behavior will be ignored (it will all be delegated to the target).
+        /// </summary>
+        /// <typeparam name="T">The type to create the proxy for.  May be an interface or a 
+        /// concrete base class.</typeparam>
+        /// <param name="target">The instance of T that should be the recipient of all invocations
+        /// on the proxy via Invocation.Proceed.</param>
+        /// <param name="invocationHandler">This is where you get to inject your logic.</param>
+        /// <returns>The new instance of the proxy that is an instance of T</returns>
+        public static T CreateProxy<T>(T target, Func<Invocation, object> invocationHandler)
+        {
+            return CreateProxy(target, invocation => Task.FromResult(invocationHandler(invocation)));
         }
     }
 
@@ -76,11 +97,12 @@ namespace AsyncProxy
         {
             string assemblyName = typeof(T).FullName + "__Proxy";
 
+            bool isIntf = typeof(T).IsInterface;
             var assembly = AppDomain.CurrentDomain.DefineDynamicAssembly(new AssemblyName(assemblyName), AssemblyBuilderAccess.RunAndSave);
             var module = assembly.DefineDynamicModule(assemblyName, "temp.dll");
 
-            var baseType = typeof(object);
-            var intfs = new[] { typeof(T) };
+            var baseType = isIntf ? typeof(object) : typeof(T);
+            var intfs = isIntf ? new[] { typeof(T) } : Type.EmptyTypes;
 
             var type = module.DefineType(assemblyName, TypeAttributes.Public, baseType, intfs);
 
@@ -93,8 +115,38 @@ namespace AsyncProxy
             var constructorWithTargetIl = constructorWithTarget.GetILGenerator();
             constructorWithTargetIl.EmitDefaultBaseConstructorCall(typeof(T));
             constructorWithTargetIl.Emit(OpCodes.Ldarg_0);
+
+            // Load target 
             constructorWithTargetIl.Emit(OpCodes.Ldarg_1);
+
+            // If target is null, we will make the target ourself
+            if (!isIntf)
+            {
+                constructorWithTargetIl.Emit(OpCodes.Dup);
+                var targetNotNull = constructorWithTargetIl.DefineLabel();
+                constructorWithTargetIl.Emit(OpCodes.Brtrue, targetNotNull);
+                constructorWithTargetIl.Emit(OpCodes.Pop);          // Pop the null target off the stack
+                constructorWithTargetIl.Emit(OpCodes.Ldarg_0);      // Place "this" onto the stack (our new target)
+                constructorWithTargetIl.MarkLabel(targetNotNull);                
+            }
+            else
+            {
+                constructorWithTargetIl.Emit(OpCodes.Dup);
+                var targetNotNull = constructorWithTargetIl.DefineLabel();
+                constructorWithTargetIl.Emit(OpCodes.Brtrue, targetNotNull);
+                constructorWithTargetIl.Emit(OpCodes.Pop);  // Pop the null target off the stack
+
+                var defaultImplementation = DefaultInterfaceImplementationFactory.CreateDefaultInterfaceImplementation<T>(type);
+                var storage = constructorWithTargetIl.DeclareLocal(defaultImplementation.DeclaringType);
+                constructorWithTargetIl.Emit(OpCodes.Ldloca_S, storage);
+                constructorWithTargetIl.Emit(OpCodes.Initobj, defaultImplementation.DeclaringType);
+                constructorWithTargetIl.Emit(OpCodes.Ldloc, storage);
+                constructorWithTargetIl.Emit(OpCodes.Box, defaultImplementation.DeclaringType);
+
+                constructorWithTargetIl.MarkLabel(targetNotNull);                                
+            }
             constructorWithTargetIl.Emit(OpCodes.Stfld, target);
+
             constructorWithTargetIl.Emit(OpCodes.Ldarg_0);
             constructorWithTargetIl.Emit(OpCodes.Ldarg_2);
             constructorWithTargetIl.Emit(OpCodes.Stfld, invocationHandler);
@@ -104,7 +156,10 @@ namespace AsyncProxy
             var staticIl = staticConstructor.GetILGenerator();
 
             // Now implement/override all methods
-            foreach (var methodInfo in new[] { typeof(T) }.Concat(typeof(T).GetInterfaces()).SelectMany(x => x.GetMethods(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance)))
+            var methods = typeof(T).GetMethods(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance).AsEnumerable();
+            if (isIntf)
+                methods = methods.Concat(typeof(T).GetInterfaces().SelectMany(x => x.GetMethods(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance)));
+            foreach (var methodInfo in methods)
             {
                 var parameterInfos = methodInfo.GetParameters();
 
@@ -112,7 +167,21 @@ namespace AsyncProxy
                 if (methodInfo.Name == "Finalize" && parameterInfos.Length == 0 && methodInfo.DeclaringType == typeof(object))
                     continue;
 
-                var methodAttributes = MethodAttributes.Public | MethodAttributes.HideBySig | MethodAttributes.Virtual;
+                // If we're not an interface and the method is not virtual, it's not possible to intercept
+                if (!isIntf && !methodInfo.IsVirtual)
+                    continue;
+
+                MethodAttributes methodAttributes;
+                if (isIntf)
+                {
+                    methodAttributes = MethodAttributes.Public | MethodAttributes.HideBySig | MethodAttributes.Virtual;
+                }
+                else
+                {
+                    methodAttributes = methodInfo.IsPublic ? MethodAttributes.Public : MethodAttributes.Family;
+                    methodAttributes |= MethodAttributes.HideBySig | MethodAttributes.SpecialName | MethodAttributes.Virtual;
+                }
+
                 var method = type.DefineMethod(methodInfo.Name, methodAttributes, methodInfo.ReturnType, parameterInfos.Select(x => x.ParameterType).ToArray());
 
                 // Initialize method info in static constructor
@@ -122,6 +191,7 @@ namespace AsyncProxy
                 // Create proceed method (four different types)
                 Type proceedDelegateType;
                 Type proceedReturnType;
+                OpCode proceedCall = isIntf ? OpCodes.Callvirt : OpCodes.Call;
                 ConstructorInfo invocationConstructor;
                 MethodInfo invokeMethod;
                 if (methodInfo.ReturnType == typeof(void))
@@ -169,7 +239,7 @@ namespace AsyncProxy
                         proceedIl.Emit(OpCodes.Unbox_Any, parameterInfos[i].ParameterType);
                 }
 
-                proceedIl.Emit(OpCodes.Callvirt, methodInfo);
+                proceedIl.Emit(proceedCall, methodInfo);
                 proceedIl.Emit(OpCodes.Ret);
 
                 // Implement method

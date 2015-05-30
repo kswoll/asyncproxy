@@ -39,6 +39,7 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="DefaultInterfaceImplementationFactory.cs" />
     <Compile Include="Extensions\EmitExtensions.cs" />
     <Compile Include="Extensions\TypeExtensions.cs" />
     <Compile Include="InvalidAsyncException.cs" />

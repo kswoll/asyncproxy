@@ -10,34 +10,34 @@ namespace AsyncProxy.Tests
         public bool DoSomethingAsyncCalled { get; set; }
         public bool DoSomethingCalled { get; set; }
 
-        public async Task<string> GetStringAsync()
+        public virtual async Task<string> GetStringAsync()
         {
             await Task.Delay(1);
             return GetStringAsyncReturnValue;
         }
 
-        public async Task DoSomethingAsync()
+        public virtual async Task DoSomethingAsync()
         {
             await Task.Delay(1);
             DoSomethingAsyncCalled = true;
         }
 
-        public string GetString()
+        public virtual string GetString()
         {
             return GetStringReturnValue;
         }
 
-        public void DoSomething()
+        public virtual void DoSomething()
         {
             DoSomethingCalled = true;
         }
 
-        public int Sum(int first, int second)
+        public virtual int Sum(int first, int second)
         {
             return first + second;
         }
 
-        public async Task<int> SumAsync(int first, int second)
+        public virtual async Task<int> SumAsync(int first, int second)
         {
             await Task.Delay(1);
             return first + second;

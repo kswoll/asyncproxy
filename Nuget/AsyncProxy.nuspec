@@ -1,0 +1,16 @@
+<?xml version="1.0"?>
+<package >
+  <metadata>
+    <id>AsyncProxy</id>
+    <version>1.0.0</version>
+    <authors>kirk</authors>
+    <owners>kirk</owners>
+    <projectUrl>https://github.com/kswoll/asyncproxy</projectUrl>
+    <licenseUrl>http://www.opensource.org/licenses/mit-license.php</licenseUrl>
+	  <releaseNotes>Initial version.</releaseNotes>
+    <requireLicenseAcceptance>false</requireLicenseAcceptance>
+    <description>A .NET library for dynamically creating proxies that fully support async/await</description>
+    <copyright>Copyright 2015</copyright>
+    <tags>async proxy dynamic</tags>
+  </metadata>
+</package>

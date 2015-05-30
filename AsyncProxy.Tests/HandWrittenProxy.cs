@@ -10,6 +10,8 @@ namespace AsyncProxy.Tests
         public HandWrittenProxy(IHandWritten target, InvocationHandler invocationHandler)
         {
             this.target = target;
+            if (this.target == null)
+                this.target = new HandWrittenDefaultImplementation();
             this.invocationHandler = invocationHandler;
         }
 

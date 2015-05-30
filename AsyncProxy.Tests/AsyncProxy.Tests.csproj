@@ -43,6 +43,10 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="HandWritten.cs" />
+    <Compile Include="HandWrittenBaseNoTargetDynamicProxyTests.cs" />
+    <Compile Include="HandWrittenBaseWithDynamicProxyTests.cs" />
+    <Compile Include="HandWrittenDefaultImplementation.cs" />
+    <Compile Include="HandWrittenNakedInterfaceDynamicProxyTests.cs" />
     <Compile Include="HandWrittenProxy.cs" />
     <Compile Include="HandWrittenProxyTests.cs" />
     <Compile Include="HandWrittenWithDynamicProxyTests.cs" />

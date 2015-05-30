@@ -85,9 +85,14 @@ namespace AsyncProxy.Extensions
                 il.Emit(OpCodes.Conv_R8);
             else if (type.IsValueType)
             {
-                //                var local = il.DeclareLocal(type);
-                //                il.Emit(OpCodes.Stloc, local);
-                il.Emit(OpCodes.Ldsfld, type.GetField("Empty"));
+                var local = il.DeclareLocal(type);
+                il.Emit(OpCodes.Ldloca_S, local);
+                il.Emit(OpCodes.Initobj, type);
+                il.Emit(OpCodes.Ldloc, local);
+            }
+            else
+            {
+                il.Emit(OpCodes.Ldnull);
             }
         }
     }
