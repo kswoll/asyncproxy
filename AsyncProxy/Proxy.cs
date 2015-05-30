@@ -114,51 +114,59 @@ namespace AsyncProxy
             var constructorWithTarget = type.DefineConstructor(MethodAttributes.Public, CallingConventions.Standard, new[] { typeof(T), typeof(InvocationHandler) });
             var constructorWithTargetIl = constructorWithTarget.GetILGenerator();
             constructorWithTargetIl.EmitDefaultBaseConstructorCall(typeof(T));
-            constructorWithTargetIl.Emit(OpCodes.Ldarg_0);
 
-            // Load target 
-            constructorWithTargetIl.Emit(OpCodes.Ldarg_1);
+            constructorWithTargetIl.Emit(OpCodes.Ldarg_0);  // Put "this" on the stack for the subsequent stfld instruction way below
+            constructorWithTargetIl.Emit(OpCodes.Ldarg_1);  // Put "target" argument on the stack
 
             // If target is null, we will make the target ourself
             if (!isIntf)
             {
-                constructorWithTargetIl.Emit(OpCodes.Dup);
                 var targetNotNull = constructorWithTargetIl.DefineLabel();
-                constructorWithTargetIl.Emit(OpCodes.Brtrue, targetNotNull);
-                constructorWithTargetIl.Emit(OpCodes.Pop);          // Pop the null target off the stack
-                constructorWithTargetIl.Emit(OpCodes.Ldarg_0);      // Place "this" onto the stack (our new target)
-                constructorWithTargetIl.MarkLabel(targetNotNull);                
+                constructorWithTargetIl.Emit(OpCodes.Dup);                      // Duplicate "target" since it will be consumed by the following branch instruction
+                constructorWithTargetIl.Emit(OpCodes.Brtrue, targetNotNull);    // If target is not null, jump below
+                constructorWithTargetIl.Emit(OpCodes.Pop);                      // Pop the null target off the stack
+                constructorWithTargetIl.Emit(OpCodes.Ldarg_0);                  // Place "this" onto the stack (our new target)
+                constructorWithTargetIl.MarkLabel(targetNotNull);               // Mark where the previous branch instruction should jump to
             }
             else
             {
-                constructorWithTargetIl.Emit(OpCodes.Dup);
                 var targetNotNull = constructorWithTargetIl.DefineLabel();
-                constructorWithTargetIl.Emit(OpCodes.Brtrue, targetNotNull);
-                constructorWithTargetIl.Emit(OpCodes.Pop);  // Pop the null target off the stack
+                constructorWithTargetIl.Emit(OpCodes.Dup);                      // Duplicate "target" since it will be consumed by the following branch instruction
+                constructorWithTargetIl.Emit(OpCodes.Brtrue, targetNotNull);    // If target is not null, jump below
+                constructorWithTargetIl.Emit(OpCodes.Pop);                      // Pop the null target off the stack
 
                 var defaultImplementation = DefaultInterfaceImplementationFactory.CreateDefaultInterfaceImplementation<T>(type);
                 var storage = constructorWithTargetIl.DeclareLocal(defaultImplementation.DeclaringType);
-                constructorWithTargetIl.Emit(OpCodes.Ldloca_S, storage);
-                constructorWithTargetIl.Emit(OpCodes.Initobj, defaultImplementation.DeclaringType);
-                constructorWithTargetIl.Emit(OpCodes.Ldloc, storage);
-                constructorWithTargetIl.Emit(OpCodes.Box, defaultImplementation.DeclaringType);
-
-                constructorWithTargetIl.MarkLabel(targetNotNull);                                
+                constructorWithTargetIl.Emit(OpCodes.Ldloca_S, storage);                            // Load the address of the local variable that holds our struct (you have to jump through these hoops when working with structs)
+                constructorWithTargetIl.Emit(OpCodes.Initobj, defaultImplementation.DeclaringType); // Equivalent of the invoking the struct's "constructor"
+                constructorWithTargetIl.Emit(OpCodes.Ldloc, storage);                               // Now load the local variable which puts the struct onto the stack
+                constructorWithTargetIl.Emit(OpCodes.Box, defaultImplementation.DeclaringType);     // Since we're storing it in a field that stores an interface reference, we need to box the struct into an object 
+                constructorWithTargetIl.MarkLabel(targetNotNull);                                   // Mark where the previous branch instruction should jump to
             }
-            constructorWithTargetIl.Emit(OpCodes.Stfld, target);
 
-            constructorWithTargetIl.Emit(OpCodes.Ldarg_0);
-            constructorWithTargetIl.Emit(OpCodes.Ldarg_2);
-            constructorWithTargetIl.Emit(OpCodes.Stfld, invocationHandler);
-            constructorWithTargetIl.Emit(OpCodes.Ret);
+            // Store whatever is on the stack inside the "target" field.  The value is either: 
+            // * The "target" argument passed in -- if not null.
+            // * If null and T is an interface type, then it is a struct that implements that interface and returns default values for each method
+            // * If null and T is not an interface type, then it is "this", where "proceed" will invoke the base implementation.
+            constructorWithTargetIl.Emit(OpCodes.Stfld, target);                
 
+            constructorWithTargetIl.Emit(OpCodes.Ldarg_0);                      // Load "this" for subsequent call to stfld
+            constructorWithTargetIl.Emit(OpCodes.Ldarg_2);                      // Load the 2nd argument, which is the invocation handler
+            constructorWithTargetIl.Emit(OpCodes.Stfld, invocationHandler);     // Store it in the invocationHandler field
+            constructorWithTargetIl.Emit(OpCodes.Ret);                          // Return from the constructor (a ret call is always required, even for void methods and constructors)
+
+            // We use a static constructor to store all the method infos in static fiellds for fast access
             var staticConstructor = type.DefineConstructor(MethodAttributes.Private | MethodAttributes.HideBySig | MethodAttributes.Static, CallingConventions.Standard, Type.EmptyTypes);
             var staticIl = staticConstructor.GetILGenerator();
 
             // Now implement/override all methods
             var methods = typeof(T).GetMethods(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance).AsEnumerable();
+
+            // If T is an interface type, we want to implement *all* the methods defined by the interface and its parent interfaces.
             if (isIntf)
                 methods = methods.Concat(typeof(T).GetInterfaces().SelectMany(x => x.GetMethods(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance)));
+
+            // Now create an implementation for each method
             foreach (var methodInfo in methods)
             {
                 var parameterInfos = methodInfo.GetParameters();
@@ -174,21 +182,36 @@ namespace AsyncProxy
                 MethodAttributes methodAttributes;
                 if (isIntf)
                 {
+                    // The attributes required for the normal implementation of an interface method
                     methodAttributes = MethodAttributes.Public | MethodAttributes.HideBySig | MethodAttributes.Virtual;
                 }
                 else
                 {
+                    // If we're overriding a method, these attributes are required
                     methodAttributes = methodInfo.IsPublic ? MethodAttributes.Public : MethodAttributes.Family;
                     methodAttributes |= MethodAttributes.HideBySig | MethodAttributes.SpecialName | MethodAttributes.Virtual;
                 }
 
+                // Define the actual method
                 var method = type.DefineMethod(methodInfo.Name, methodAttributes, methodInfo.ReturnType, parameterInfos.Select(x => x.ParameterType).ToArray());
 
                 // Initialize method info in static constructor
                 var methodInfoField = type.DefineField(methodInfo.Name + "__Info", typeof(MethodInfo), FieldAttributes.Private | FieldAttributes.Static);
                 staticIl.StoreMethodInfo(methodInfoField, methodInfo);
 
-                // Create proceed method (four different types)
+                // Create proceed method (four different types).  The proceed method is what you may call in your invocation handler
+                // in order to invoke the behavior that would have happened without the proxy.  The actual behavior depends on the value
+                // of "target".  If it's not null, it calls the equivalent method on "target".  If it *is* null, then:
+                //
+                // * If it's an interface, it provides a default value
+                // * If it's not an interface, it calls the base implementation of that class.
+                //
+                // The actual implementation of proceed varies based on whether (where T represents the method's return type):
+                //
+                // * The method's return type is void               (Represented by Action)
+                // * The method's return type is Task               (Represented by Func<Task>)
+                // * The method's return type is Task<T>            (Represented by Func<Task<T>>)
+                // * The method's return type is anything else      (Represented by Func<T>)
                 Type proceedDelegateType;
                 Type proceedReturnType;
                 OpCode proceedCall = isIntf ? OpCodes.Callvirt : OpCodes.Call;
