@@ -5,3 +5,4 @@ AsyncProxy.Tests/obj/
 AsyncProxy.Tests/bin/
 *.suo
 *.DS_Store
+*.nupkg
