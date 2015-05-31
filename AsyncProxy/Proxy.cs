@@ -75,6 +75,48 @@ namespace AsyncProxy
         {
             return CreateProxy(target, invocation => Task.FromResult(invocationHandler(invocation)));
         }
+
+        /// <summary>
+        /// Creates a proxy for a given type.  This method supports two discrete usage scenarios.<p/>
+        /// If T is an interface, the target should be an implementation of that interface. In 
+        /// this scenario, T should be <i>explicitly</i> specified unless the type of <i>target</i>
+        /// at the calling site is of that interface.  In other words, if the calling site has the
+        /// <i>target</i> declared as the concrete implementation, the proxy will be generated
+        /// for the implementation, rather than for the interface.
+        /// 
+        /// If T is a class, the target should be an instance of that class, and a subclassing 
+        /// proxy will be created for it.  However, because target is specified in this case, 
+        /// the base class behavior will be ignored (it will all be delegated to the target).
+        /// </summary>
+        /// <typeparam name="T">The type to create the proxy for.  May be an interface or a 
+        /// concrete base class.</typeparam>
+        /// <param name="invocationHandler">This is where you get to inject your logic.</param>
+        /// <returns>The new instance of the proxy that is an instance of T</returns>
+        public static T CreateProxy<T>(Func<Invocation, Task<object>> invocationHandler)
+        {
+            return CreateProxy(default(T), invocationHandler);
+        }
+
+        /// <summary>
+        /// Creates a proxy for a given type.  This method supports two discrete usage scenarios.<p/>
+        /// If T is an interface, the target should be an implementation of that interface. In 
+        /// this scenario, T should be <i>explicitly</i> specified unless the type of <i>target</i>
+        /// at the calling site is of that interface.  In other words, if the calling site has the
+        /// <i>target</i> declared as the concrete implementation, the proxy will be generated
+        /// for the implementation, rather than for the interface.
+        /// 
+        /// If T is a class, the target should be an instance of that class, and a subclassing 
+        /// proxy will be created for it.  However, because target is specified in this case, 
+        /// the base class behavior will be ignored (it will all be delegated to the target).
+        /// </summary>
+        /// <typeparam name="T">The type to create the proxy for.  May be an interface or a 
+        /// concrete base class.</typeparam>
+        /// <param name="invocationHandler">This is where you get to inject your logic.</param>
+        /// <returns>The new instance of the proxy that is an instance of T</returns>
+        public static T CreateProxy<T>(Func<Invocation, object> invocationHandler)
+        {
+            return CreateProxy(default(T), invocation => Task.FromResult(invocationHandler(invocation)));
+        }
     }
 
     public class Proxy<T>
@@ -127,21 +169,6 @@ namespace AsyncProxy
                 constructorWithTargetIl.Emit(OpCodes.Pop);                      // Pop the null target off the stack
                 constructorWithTargetIl.Emit(OpCodes.Ldarg_0);                  // Place "this" onto the stack (our new target)
                 constructorWithTargetIl.MarkLabel(targetNotNull);               // Mark where the previous branch instruction should jump to
-            }
-            else
-            {
-                var targetNotNull = constructorWithTargetIl.DefineLabel();
-                constructorWithTargetIl.Emit(OpCodes.Dup);                      // Duplicate "target" since it will be consumed by the following branch instruction
-                constructorWithTargetIl.Emit(OpCodes.Brtrue, targetNotNull);    // If target is not null, jump below
-                constructorWithTargetIl.Emit(OpCodes.Pop);                      // Pop the null target off the stack
-
-                var defaultImplementation = DefaultInterfaceImplementationFactory.CreateDefaultInterfaceImplementation<T>(type);
-                var storage = constructorWithTargetIl.DeclareLocal(defaultImplementation.DeclaringType);
-                constructorWithTargetIl.Emit(OpCodes.Ldloca_S, storage);                            // Load the address of the local variable that holds our struct (you have to jump through these hoops when working with structs)
-                constructorWithTargetIl.Emit(OpCodes.Initobj, defaultImplementation.DeclaringType); // Equivalent of the invoking the struct's "constructor"
-                constructorWithTargetIl.Emit(OpCodes.Ldloc, storage);                               // Now load the local variable which puts the struct onto the stack
-                constructorWithTargetIl.Emit(OpCodes.Box, defaultImplementation.DeclaringType);     // Since we're storing it in a field that stores an interface reference, we need to box the struct into an object 
-                constructorWithTargetIl.MarkLabel(targetNotNull);                                   // Mark where the previous branch instruction should jump to
             }
 
             // Store whatever is on the stack inside the "target" field.  The value is either: 
@@ -204,7 +231,8 @@ namespace AsyncProxy
                 // of "target".  If it's not null, it calls the equivalent method on "target".  If it *is* null, then:
                 //
                 // * If it's an interface, it provides a default value
-                // * If it's not an interface, it calls the base implementation of that class.
+                // * If it's not an interface, and the method is not abstract, it calls the base implementation of that class.
+                // * If it's abstract, then it provides a default value
                 //
                 // The actual implementation of proceed varies based on whether (where T represents the method's return type):
                 //
@@ -248,22 +276,40 @@ namespace AsyncProxy
                 var proceed = type.DefineMethod(methodInfo.Name + "__Proceed", MethodAttributes.Private, proceedReturnType, new[] { typeof(object[]) });
                 var proceedIl = proceed.GetILGenerator();
 
-                // Load target for subsequent call
-                proceedIl.Emit(OpCodes.Ldarg_0);
-                proceedIl.Emit(OpCodes.Ldfld, target);
-
-                // Decompose array into arguments
-                for (int i = 0; i < parameterInfos.Length; i++)
+                if (!methodInfo.IsAbstract || isIntf)
                 {
-                    proceedIl.Emit(OpCodes.Ldarg, (short)1);            // Push array 
-                    proceedIl.Emit(OpCodes.Ldc_I4, i);                  // Push element index
-                    proceedIl.Emit(OpCodes.Ldelem, typeof(object));     // Get element
-                    if (parameterInfos[i].ParameterType.IsValueType)
-                        proceedIl.Emit(OpCodes.Unbox_Any, parameterInfos[i].ParameterType);
-                }
+                    // If T is an interface, then we want to check if target is null; if so, we want to just return the default value
+                    if (isIntf)
+                    {
+                        var targetNotNull = proceedIl.DefineLabel();
+                        proceedIl.Emit(OpCodes.Ldarg_0);                    // Load "this"
+                        proceedIl.Emit(OpCodes.Ldfld, target);              // Load "target" from "this"
+                        proceedIl.Emit(OpCodes.Brtrue, targetNotNull);      // If target is not null, jump below
+                        DefaultInterfaceImplementationFactory.CreateDefaultMethodImplementation(methodInfo, proceedIl);
+                        proceedIl.MarkLabel(targetNotNull);                 // Mark where the previous branch instruction should jump to                        
+                    }
 
-                proceedIl.Emit(proceedCall, methodInfo);
-                proceedIl.Emit(OpCodes.Ret);
+                    // Load target for subsequent call
+                    proceedIl.Emit(OpCodes.Ldarg_0);
+                    proceedIl.Emit(OpCodes.Ldfld, target);
+
+                    // Decompose array into arguments
+                    for (int i = 0; i < parameterInfos.Length; i++)
+                    {
+                        proceedIl.Emit(OpCodes.Ldarg, (short)1);            // Push array 
+                        proceedIl.Emit(OpCodes.Ldc_I4, i);                  // Push element index
+                        proceedIl.Emit(OpCodes.Ldelem, typeof(object));     // Get element
+                        if (parameterInfos[i].ParameterType.IsValueType)
+                            proceedIl.Emit(OpCodes.Unbox_Any, parameterInfos[i].ParameterType);
+                    }
+
+                    proceedIl.Emit(proceedCall, methodInfo);
+                    proceedIl.Emit(OpCodes.Ret);                    
+                }
+                else
+                {
+                    DefaultInterfaceImplementationFactory.CreateDefaultMethodImplementation(methodInfo, proceedIl);
+                }
 
                 // Implement method
                 var il = method.GetILGenerator();
