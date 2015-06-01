@@ -10,8 +10,6 @@ namespace AsyncProxy.Tests
         public HandWrittenProxy(IHandWritten target, InvocationHandler invocationHandler)
         {
             this.target = target;
-            if (this.target == null)
-                this.target = new HandWrittenDefaultImplementation();
             this.invocationHandler = invocationHandler;
         }
 
@@ -61,6 +59,24 @@ namespace AsyncProxy.Tests
             var arguments = new object[] { first, second };
             var invocation = new AsyncInvocationT<int>(method, arguments, args => target.SumAsync((int)args[0], (int)args[1]));
             return invocationHandler.AsyncInvokeT(invocation);
+        }
+
+        public string StringProperty
+        {
+            get
+            {
+                var method = typeof(IHandWritten).GetProperty("StringProperty").GetMethod;
+                var arguments = new object[0];
+                var invocation = new InvocationT<string>(method, arguments, args => target.StringProperty);
+                return invocationHandler.InvokeT(invocation);
+            }
+            set
+            {
+                var method = typeof(IHandWritten).GetProperty("StringProperty").GetMethod;
+                var arguments = new object[] { value };
+                var invocation = new VoidInvocation(method, arguments, args => target.StringProperty = (string)args[0]);
+                invocationHandler.VoidInvoke(invocation);                
+            }
         }
     }
 }

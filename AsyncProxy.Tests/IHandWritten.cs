@@ -10,5 +10,6 @@ namespace AsyncProxy.Tests
         string GetString();
         int Sum(int first, int second);
         Task<int> SumAsync(int first, int second);
+        string StringProperty { get; set; }
     }
 }

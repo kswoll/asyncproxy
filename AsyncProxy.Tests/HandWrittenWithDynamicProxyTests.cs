@@ -34,6 +34,34 @@ namespace AsyncProxy.Tests
         }
 
         [Test]
+        public void StringPropertyGet()
+        {
+            var handWritten = new HandWritten();
+            handWritten.StringProperty = "AStringProperty";
+            var proxy = Proxy.CreateProxy<IHandWritten>(handWritten, async invocation =>
+            {
+                var returnValue = await invocation.Proceed();
+                return (string)returnValue + "test";
+            });
+            var result = proxy.StringProperty;
+            Assert.AreEqual("AStringProperty" + "test", result);
+        }
+
+        [Test]
+        public void StringPropertySet()
+        {
+            var handWritten = new HandWritten();
+            var proxy = Proxy.CreateProxy<IHandWritten>(handWritten, async invocation =>
+            {
+                invocation.Arguments[0] = "AStringValue" + invocation.Arguments[0];
+                await invocation.Proceed();
+                return null;
+            });
+            proxy.StringProperty = "test";
+            Assert.AreEqual("AStringValue" + "test", handWritten.StringProperty);
+        }
+
+        [Test]
         public void GetStringThrowsExcpetionIfAsync()
         {
             var handWritten = new HandWritten();

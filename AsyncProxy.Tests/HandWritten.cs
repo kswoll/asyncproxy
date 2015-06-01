@@ -42,5 +42,7 @@ namespace AsyncProxy.Tests
             await Task.Delay(1);
             return first + second;
         }
+
+        public string StringProperty { get; set; }
     }
 }
