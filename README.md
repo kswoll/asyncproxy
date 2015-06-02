@@ -40,8 +40,7 @@ Lets say the target on which you're wrapping has implemented this method like so
 
 Now, how will the interceptor handle this?  The code in `finally` that logs "After target call" will happen *immediately* -- 
 before the delay has finished.**  This is not really how you want the interceptor to work.  (It's true that you can use 
-`.ContinueWith` on the returned task and then reassign the return value to that new task.  But this is ugly and error prone)  
-Instead, it would be great if interceptors were *designed* to be `Task` based.  That way, it's still trivial to intercept 
+`.ContinueWith` on the returned task and then reassign the return value to that new task.  But this is ugly and error prone) Instead, it would be great if interceptors were *designed* to be `Task` based.  That way, it's still trivial to intercept 
 non-async methods, but would allow you to use `await` when appropriate.
 
 ** For more discussion on these issues, see [Intercept the call to an async method using DynamicProxy](http://stackoverflow.com/questions/14288075/intercept-the-call-to-an-async-method-using-dynamicproxy) and [Intercept async method that returns generic Task<> via DynamicProxy](http://stackoverflow.com/questions/28099669/intercept-async-method-that-returns-generic-task-via-dynamicproxy).
@@ -70,7 +69,6 @@ The interceptor will delay `1` millisecond, the `target` implementation will wai
 "Hello World". Finally, the interceptor casts the return value as a `string` concatenates `" Test"`, and returns the result.  
 Consequently, the value of `result` will be `Hello World Test`, after ~1001 milliseconds of awaiting.
 
-If you happen to know that your contract is not returning any tasks that need to be awaited, you can use an overload when creating 
-the proxy that allows you to pass in a lambda that doesn't return a `Task`, avoiding `async` semantics altogether:
+If you happen to know that your contract is not returning any tasks that need to be awaited, you can use an overload when creating the proxy that allows you to pass in a lambda that doesn't return a `Task`, avoiding `async` semantics altogether:
 
     public static T CreateProxy<T>(T target, Func<Invocation, object> invocationHandler)
