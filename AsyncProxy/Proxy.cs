@@ -203,8 +203,10 @@ namespace AsyncProxy
                     continue;
 
                 // If we're not an interface and the method is not virtual, it's not possible to intercept
-                if (!isIntf && !methodInfo.IsVirtual)
+                if (!isIntf && methodInfo.IsFinal)
                     continue;
+
+                Console.WriteLine(methodInfo);
 
                 MethodAttributes methodAttributes;
                 if (isIntf)

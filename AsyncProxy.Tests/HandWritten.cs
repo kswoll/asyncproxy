@@ -43,6 +43,6 @@ namespace AsyncProxy.Tests
             return first + second;
         }
 
-        public string StringProperty { get; set; }
+        public virtual string StringProperty { get; set; }
     }
 }
