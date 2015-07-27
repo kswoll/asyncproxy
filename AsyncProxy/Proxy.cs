@@ -206,8 +206,6 @@ namespace AsyncProxy
                 if (!isIntf && methodInfo.IsFinal)
                     continue;
 
-                Console.WriteLine(methodInfo);
-
                 MethodAttributes methodAttributes;
                 if (isIntf)
                 {
