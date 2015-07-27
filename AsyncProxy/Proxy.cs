@@ -140,8 +140,8 @@ namespace AsyncProxy
             string assemblyName = typeof(T).FullName + "__Proxy";
 
             bool isIntf = typeof(T).IsInterface;
-            var assembly = AppDomain.CurrentDomain.DefineDynamicAssembly(new AssemblyName(assemblyName), AssemblyBuilderAccess.RunAndSave);
-            var module = assembly.DefineDynamicModule(assemblyName, "temp.dll");
+            var assembly = AppDomain.CurrentDomain.DefineDynamicAssembly(new AssemblyName(assemblyName), AssemblyBuilderAccess.Run);
+            var module = assembly.DefineDynamicModule(assemblyName);
 
             var baseType = isIntf ? typeof(object) : typeof(T);
             var intfs = isIntf ? new[] { typeof(T) } : Type.EmptyTypes;
@@ -356,7 +356,6 @@ namespace AsyncProxy
             staticIl.Emit(OpCodes.Ret);
 
             Type proxyType = type.CreateType();
-            assembly.Save("temp2.dll");
             return proxyType;
         }
     }
