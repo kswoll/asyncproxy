@@ -1,3 +1,8 @@
+# Note: This project has been deprecated in favor of [sexy-proxy](https://github.com/kswoll/sexy-proxy).  All new development
+will be happening there.
+
+---
+
 # AsyncProxy
 A .NET library for dynamically creating proxies that fully support async/await
 
