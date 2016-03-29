@@ -1,5 +1,6 @@
-# Note: This project has been deprecated in favor of [sexy-proxy](https://github.com/kswoll/sexy-proxy).  All new development
-will be happening there.
+# Note: This project has been deprecated in favor of [sexy-proxy](https://github.com/kswoll/sexy-proxy).  
+
+All new developmentwill be happening there.
 
 ---
 
